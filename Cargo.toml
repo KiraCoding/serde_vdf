@@ -1,0 +1,13 @@
+[package]
+name = "serde_vdf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+logos = "0.14.0"
+serde = { version = "1.0.204", features = ["derive"] }
+
+[features]
+default = ["std"]
+std = ["serde/std"]
+alloc = ["serde/alloc"]
