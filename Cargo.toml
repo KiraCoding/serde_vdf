@@ -1,11 +1,20 @@
 [package]
 name = "serde_vdf"
 version = "0.1.0"
+authors = ["Kira"]
+categories = ["encoding", "parser-implementations", "no-std"]
+description = "A VDF serialization file format"
+documentation = "https://docs.rs/serde_vdf"
 edition = "2021"
+keywords = ["vdf", "serde", "serialization"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KiraCoding/serde_vdf"
 
 [dependencies]
+itoa = "1.0.11"
 logos = "0.14.0"
-serde = { version = "1.0.204", features = ["derive"] }
+ryu = "1.0.18"
+serde = { version = "1.0.204", default-features = false }
 
 [features]
 default = ["std"]

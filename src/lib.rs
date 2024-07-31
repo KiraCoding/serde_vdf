@@ -1,135 +1,29 @@
-use logos::{Lexer, Logos};
-use std::collections::HashMap;
+#![no_std]
 
-#[derive(Debug, Logos, PartialEq)]
-#[logos(skip r" \t\n\f]+")]
-enum Token {
-    #[token("{")]
-    BraceOpen,
-
-    #[token("}")]
-    BraceClose,
-
-    #[token("\"")]
-    Quote,
-
-    #[token("[a-zA-Z_][a-zA-Z0-9_]*")]
-    Identifier,
-
-    #[token("[0-9]+")]
-    Number,
+#[cfg(not(any(feature = "std", feature = "alloc")))]
+compile_error! {
+    "serde_vdf requires that either `std` (default) or `alloc` feature is enabled"
 }
 
-pub struct Parser<'p> {
-    lexer: Lexer<'p, Token>,
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
+pub mod error;
+pub mod lexer;
+pub mod parser;
+pub mod ser;
+
+mod io;
+
+// We only use our own error type; no need for From conversions provided by the
+// standard library's try! macro. This reduces lines of LLVM IR by 4%.
+macro_rules! tri {
+    ($e:expr $(,)?) => {
+        match $e {
+            core::result::Result::Ok(val) => val,
+            core::result::Result::Err(err) => return core::result::Result::Err(err),
+        }
+    };
 }
-
-impl<'p> Parser<'p> {
-    pub fn new(input: &'p str) -> Self {
-        Self {
-            lexer: Token::lexer(input),
-        }
-    }
-
-    pub fn parse(&mut self) -> Result<Vdf, String> {
-        self.parse_vdf()
-    }
-
-    fn expect(&mut self, expected: Token) -> Result<Token, String> {
-        match self.lexer.next().unwrap().ok() {
-            Some(token) if token == expected => Ok(token),
-            Some(token) => Err(format!("Expected {:?}, found {:?}", expected, token)),
-            None => Err(format!("Expected {:?}, but the input has ended", expected)),
-        }
-    }
-
-    fn parse_vdf(&mut self) -> Result<Vdf, String> {
-        let mut data = HashMap::new();
-
-        while let Some(token) = self.lexer.next().unwrap().ok() {
-            match token {
-                Token::BraceOpen => {
-                    let key = self.parse_identifier()?;
-                    let value = self.parse_group()?;
-                    data.insert(key, VdfEntry::Group(value));
-                }
-                Token::Quote => {
-                    let key = self.parse_identifier()?;
-                    let value = self.parse_value()?;
-                    data.insert(key, VdfEntry::Value(value));
-                }
-                Token::BraceClose => {
-                    return Ok(Vdf { data });
-                }
-                _ => return Err("Unexpected token".into()),
-            }
-        }
-
-        Err("Unexpected end of input".into())
-    }
-
-    fn parse_identifier(&mut self) -> Result<String, String> {
-        match self.lexer.next() {
-            Some(Ok(Token::Identifier)) => Ok(self.lexer.slice().to_string()),
-            _ => Err("Expected identifier".into()),
-        }
-    }
-
-    fn parse_value(&mut self) -> Result<String, String> {
-        match self.lexer.next() {
-            Some(Ok(Token::Quote)) => {
-                let value = self.lexer.slice().to_string();
-                match self.lexer.next() {
-                    Some(Ok(Token::Quote)) => Ok(value),
-                    _ => Err("Expected closing quote".into()),
-                }
-            }
-            _ => Err("Expected value".into()),
-        }
-    }
-
-    fn parse_group(&mut self) -> Result<Vdf, String> {
-        let mut data = HashMap::new();
-
-        while let Some(token) = self.lexer.next().unwrap().ok() {
-            match token {
-                Token::BraceOpen => {
-                    let key = self.parse_identifier()?;
-                    let value = self.parse_group()?;
-                    data.insert(key, VdfEntry::Group(value));
-                }
-                Token::Quote => {
-                    let key = self.parse_identifier()?;
-                    let value = self.parse_value()?;
-                    data.insert(key, VdfEntry::Value(value));
-                }
-                Token::BraceClose => {
-                    return Ok(Vdf { data });
-                }
-                _ => return Err("Unexpected token".into()),
-            }
-        }
-
-        Err("Unexpected end of input".into())
-    }
-}
-
-#[derive(Debug)]
-pub struct Vdf {
-    data: HashMap<String, VdfEntry>,
-}
-
-#[derive(Debug)]
-pub enum VdfEntry {
-    Value(String),
-    Group(Vdf),
-}
-
-// "ParentKey1"
-// {
-// 	"ValueKey1"	"1"
-// 	"ParentKey2"
-// 	{
-// 		...
-// 	}
-// }
